@@ -2,12 +2,11 @@ import streamlit as st
 from openai import OpenAI
 import json
 
-# APIキーは .streamlit/secrets.toml の OPENAI_API_KEY から読み込む（Streamlit Community Cloud では Secrets 設定画面の値が使われる）
 api_key = st.secrets["OPENAI_API_KEY"]
 
 client = OpenAI(api_key=api_key)
 
-# どの観点のキーワードを重視するかの選択肢（福利厚生メニューの施設情報はエリア・施設タイプ・設備で絞り込むことが多い）
+# どの観点のキーワードを重視するかの選択肢（福利厚生メニューの施設情報はエリア・施設タイプ・設備で絞り込む）
 search_focus_kind_of = [
     "バランスよく",
     "エリア（地域名・温泉地名など）を重視",

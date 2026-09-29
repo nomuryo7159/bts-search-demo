@@ -63,11 +63,9 @@ if st.sidebar.button("キーワードを提案してもらう"):
         st.write(result.get("summary", ""))
 
         st.subheader("おすすめの検索キーワード")
-        st.caption("福利厚生サービスの施設検索欄にコピーして使ってください（右上のアイコンでコピーできます）。")
+        st.caption("福利厚生サービスの施設検索欄に入力して使ってください。")
         for i, item in enumerate(result.get("keywords", []), start=1):
-            st.markdown(f"**{i}. {item.get('category', '')}**")
-            # st.codeで表示するとワンクリックでコピーできる
-            st.code(item.get("keyword", ""), language=None)
+            st.markdown(f"**{i}. {item.get('keyword', '')}**（{item.get('category', '')}）")
             st.caption(item.get("reason", ""))
 else:
     st.write("左のサイドバーに理想の休日プランを入力して、ボタンを押してください。")

@@ -2,12 +2,8 @@ import streamlit as st
 from openai import OpenAI
 import json
 
-import os # OSが持つ環境変数OPENAI_API_KEYにAPIを入力するためにosにアクセスするためのライブラリをインポート
-
-from dotenv import load_dotenv
-load_dotenv()
-
-api_key = os.environ["OPENAI_API_KEY"]
+# APIキーは .streamlit/secrets.toml の OPENAI_API_KEY から読み込む（Streamlit Community Cloud では Secrets 設定画面の値が使われる）
+api_key = st.secrets["OPENAI_API_KEY"]
 
 client = OpenAI(api_key=api_key)
 

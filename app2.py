@@ -1,6 +1,7 @@
 import streamlit as st
 from openai import OpenAI
 import json
+import re
 import datetime
 from facilities import FACILITIES
 
@@ -77,7 +78,14 @@ def run_gpt(content_text_to_gpt, search_focus_to_gpt):
 
     # 返って来たレスポンスの内容（JSON文字列）を辞書に変換して返す
     output_content = response.choices[0].message.content.strip()
-    return json.loads(output_content)
+    result = json.loads(output_content)
+
+    # 「予算10万円」「4人」のような数字入りの語は施設検索でヒットしにくいため、念のため除外する（半角・全角の数字）
+    result["keywords"] = [
+        item for item in result.get("keywords", [])
+        if not re.search(r"[0-9０-９]", item.get("keyword", ""))
+    ]
+    return result
 
 # サイドバー（ユーザー名・クーポン使用履歴・ログアウトはデモ用の見た目のみ）
 st.sidebar.header(":material/search: 福利厚生キーワード提案")

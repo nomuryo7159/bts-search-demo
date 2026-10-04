@@ -2,6 +2,7 @@ import streamlit as st
 from openai import OpenAI
 import json
 import datetime
+from facilities import FACILITIES
 
 st.set_page_config(page_title="福利厚生キーワード提案", page_icon=":material/search:")
 
@@ -20,6 +21,34 @@ search_focus_kind_of = [
 # 「条件で探す」タブの選択肢（https://bts-demo.streamlit.app/ の項目に合わせる）
 area_kind_of = ["すべて", "箱根", "熱海", "軽井沢", "京都", "沖縄"]
 category_kind_of = ["すべて", "宿泊", "食事", "レジャー"]
+sort_kind_of = ["お得順", "価格が安い順", "評価が高い順"]
+weekday_names = ["月", "火", "水", "木", "金", "土", "日"]
+category_icons = {"宿泊": ":material/bed:", "食事": ":material/restaurant:", "レジャー": ":material/attractions:"}
+
+# 条件に合う施設を絞り込む。料金は1人あたりなので、予算は人数分の合計で判定する
+def search_facilities(area, category, stay_date, people, budget):
+    results = []
+    for facility in FACILITIES:
+        if area != "すべて" and facility["area"] != area:
+            continue
+        if category != "すべて" and facility["category"] != category:
+            continue
+        if stay_date.weekday() in facility["closed_weekdays"]:
+            continue
+        if people > facility["capacity"]:
+            continue
+        if budget > 0 and facility["member_price"] * people > budget:
+            continue
+        results.append(facility)
+    return results
+
+# 並び順に合わせて施設を並べ替える（評価なしは最後）
+def sort_facilities(facilities, sort_by):
+    if sort_by == "価格が安い順":
+        return sorted(facilities, key=lambda f: f["member_price"])
+    if sort_by == "評価が高い順":
+        return sorted(facilities, key=lambda f: f["rating"] or 0, reverse=True)
+    return sorted(facilities, key=lambda f: f["regular_price"] - f["member_price"], reverse=True)
 
 # chatGPTにリクエストするためのメソッドを設定。引数には理想の休日プランと重視する観点を指定
 def run_gpt(content_text_to_gpt, search_focus_to_gpt):
@@ -68,12 +97,9 @@ if page == "クーポン使用履歴":
     st.stop()
 
 with st.container(border=True):
-    st.subheader(":material/search: キーワード提案")
+    st.subheader(":material/search: 検索")
 
     tab_text, tab_condition = st.tabs([":material/chat: 文章で探す", ":material/tune: 条件で探す"])
-
-    # どちらのタブのボタンが押されたかで、GPTに渡すプランと観点を決める
-    plan_to_gpt = None
 
     with tab_text:
         st.info("休日プランを文章で入力すると、福利厚生サービスの施設検索で使えるキーワードを提案します。")
@@ -92,7 +118,18 @@ with st.container(border=True):
             if not content_text_to_gpt.strip():
                 st.warning("休日プランを入力してください。")
             else:
-                plan_to_gpt = content_text_to_gpt
+                with st.spinner("福利厚生メニューで使える検索キーワードを考えています..."):
+                    result = run_gpt(content_text_to_gpt, search_focus_to_gpt)
+
+                st.divider()
+                st.caption("こう読み取りました。")
+                st.write(result.get("summary", ""))
+
+                st.markdown("**おすすめの検索キーワード**")
+                st.caption("福利厚生サービスの施設検索欄に入力して使ってください。")
+                for i, item in enumerate(result.get("keywords", []), start=1):
+                    st.markdown(f"**{i}. {item.get('keyword', '')}**（{item.get('category', '')}）")
+                    st.caption(item.get("reason", ""))
 
     with tab_condition:
         with st.form("condition_form"):
@@ -109,27 +146,41 @@ with st.container(border=True):
             people = col_people.number_input("人数", min_value=1, value=2, step=1)
             budget = col_budget.number_input("予算（円・0なら上限なし）", min_value=0, value=0, step=1000)
 
-            if st.form_submit_button("キーワードを提案", type="primary", icon=":material/search:"):
-                # 条件を文章にまとめて、文章で探すときと同じようにGPTへ渡す
-                plan_to_gpt = (
-                    f"エリア：{'指定なし' if area == 'すべて' else area}、"
-                    f"カテゴリ：{'指定なし' if category == 'すべて' else category}、"
-                    f"利用日：{stay_date:%Y年%m月%d日}、"
-                    f"人数：{people}人、"
-                    f"予算：{'上限なし' if budget == 0 else f'{budget:,}円以内'}"
-                )
-                search_focus_to_gpt = search_focus_kind_of[0]
+            if st.form_submit_button("検索", type="primary", icon=":material/search:"):
+                # 並び替えで画面が再実行されても結果が消えないよう、検索条件を保存しておく
+                st.session_state["condition_search"] = (area, category, stay_date, people, budget)
 
-    if plan_to_gpt:
-        with st.spinner("福利厚生メニューで使える検索キーワードを考えています..."):
-            result = run_gpt(plan_to_gpt, search_focus_to_gpt)
+        if "condition_search" in st.session_state:
+            area, category, stay_date, people, budget = st.session_state["condition_search"]
+            results = search_facilities(area, category, stay_date, people, budget)
 
-        st.divider()
-        st.caption("こう読み取りました。")
-        st.write(result.get("summary", ""))
+            st.divider()
+            col_title, col_sort = st.columns([2, 1], vertical_alignment="bottom")
+            col_title.markdown(f"**検索結果 {len(results)}件**")
+            sort_by = col_sort.selectbox("並び順", options=sort_kind_of, label_visibility="collapsed")
+            st.caption(
+                f"{stay_date:%Y/%m/%d}（{weekday_names[stay_date.weekday()]}）・{people}人の料金です。"
+                "施設データはデモ用の架空のものです。"
+            )
 
-        st.markdown("**おすすめの検索キーワード**")
-        st.caption("福利厚生サービスの施設検索欄に入力して使ってください。")
-        for i, item in enumerate(result.get("keywords", []), start=1):
-            st.markdown(f"**{i}. {item.get('keyword', '')}**（{item.get('category', '')}）")
-            st.caption(item.get("reason", ""))
+            if not results:
+                st.info("条件に合う施設が見つかりませんでした。エリアやカテゴリ、予算を変えてお試しください。")
+
+            for facility in sort_facilities(results, sort_by):
+                member_total = facility["member_price"] * people
+                regular_total = facility["regular_price"] * people
+                with st.container(border=True):
+                    st.subheader(facility["name"], anchor=False)
+                    badges = st.container(horizontal=True)
+                    with badges:
+                        st.badge(facility["category"], icon=category_icons[facility["category"]], color="violet")
+                        st.badge(facility["area"], icon=":material/place:", color="gray")
+                        if facility["new"]:
+                            st.badge("新着", color="red")
+                        if facility["coupon"]:
+                            st.badge("クーポンあり", icon=":material/confirmation_number:", color="blue")
+                        if facility["rating"]:
+                            st.markdown(f"★{facility['rating']:.1f}")
+                    st.subheader(f":green[{regular_total - member_total:,}円お得]", anchor=False)
+                    st.markdown(f"福利厚生 **{member_total:,}円**　:gray[（一般サイト {regular_total:,}円）]")
+                    st.caption(facility["description"])

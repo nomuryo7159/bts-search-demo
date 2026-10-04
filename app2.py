@@ -102,7 +102,7 @@ with st.container(border=True):
     tab_text, tab_condition = st.tabs([":material/chat: 文章で探す", ":material/tune: 条件で探す"])
 
     with tab_text:
-        st.info("休日プランを文章で入力すると、福利厚生サービスの施設検索で使えるキーワードを提案します。")
+        # st.info("休日プランを文章で入力すると、福利厚生サービスの施設検索で使えるキーワードを提案します。")
         content_text_to_gpt = st.text_area(
             "どんな休日にしたいですか",
             placeholder="例：夏休みに家族4人（子ども小学生2人）で、東京から車で行ける温泉旅館に1泊したい。部屋食か個室の食事で、子どもが遊べる施設があると嬉しい。",
@@ -126,10 +126,12 @@ with st.container(border=True):
                 st.write(result.get("summary", ""))
 
                 st.markdown("**おすすめの検索キーワード**")
-                st.caption("福利厚生サービスの施設検索欄に入力して使ってください。")
-                for i, item in enumerate(result.get("keywords", []), start=1):
-                    st.markdown(f"**{i}. {item.get('keyword', '')}**（{item.get('category', '')}）")
-                    st.caption(item.get("reason", ""))
+                # st.caption("福利厚生サービスの施設検索欄に入力して使ってください。")
+                for item in result.get("keywords", []):
+                    st.markdown(
+                        f"**{item.get('keyword', '')}**（{item.get('category', '')}）"
+                        f"　:gray[{item.get('reason', '')}]"
+                    )
 
     with tab_condition:
         with st.form("condition_form"):

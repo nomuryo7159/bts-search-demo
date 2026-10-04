@@ -51,8 +51,43 @@ def sort_facilities(facilities, sort_by):
         return sorted(facilities, key=lambda f: f["rating"] or 0, reverse=True)
     return sorted(facilities, key=lambda f: f["regular_price"] - f["member_price"], reverse=True)
 
+# AIが読み取った宿泊日・人数・予算を整える。読めない値は「指定なし」（None）にする
+def normalize_conditions(raw):
+    raw = raw if isinstance(raw, dict) else {}
+    today = datetime.date.today()
+
+    stay_date = None
+    try:
+        stay_date = datetime.date.fromisoformat(str(raw.get("stay_date")))
+        # AIは年を古い年で返すことがあるため、過去の日付になった場合は月日だけを使い、今日以降で最も近い日付にする
+        if stay_date < today:
+            stay_date = stay_date.replace(year=today.year)
+            if stay_date < today:
+                stay_date = stay_date.replace(year=today.year + 1)
+    except ValueError:
+        pass
+
+    def to_positive_int(value):
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            return None
+        return number if number > 0 else None
+
+    return {"stay_date": stay_date, "people": to_positive_int(raw.get("people")), "budget": to_positive_int(raw.get("budget"))}
+
+# 読み取った条件を「宿泊日：指定なし ・ 人数：4人 ・ 予算：指定なし」の形の文字列にする
+def format_conditions(conditions):
+    stay_date, people, budget = conditions["stay_date"], conditions["people"], conditions["budget"]
+    date_text = f"{stay_date:%Y/%m/%d}（{weekday_names[stay_date.weekday()]}）" if stay_date else "指定なし"
+    people_text = f"{people}人" if people else "指定なし"
+    budget_text = f"{budget:,}円" if budget else "指定なし"
+    return f"宿泊日：{date_text} ・ 人数：{people_text} ・ 予算：{budget_text}"
+
 # chatGPTにリクエストするためのメソッドを設定。引数には理想の休日プランと重視する観点を指定
 def run_gpt(content_text_to_gpt, search_focus_to_gpt):
+    # 「12月26日」のような年のない書き方を日付にするため、今日の日付を伝える
+    today = datetime.date.today()
     request_to_gpt = (
         "あなたは企業の福利厚生サービス（会員制の宿泊・レジャー優待メニュー）に詳しい旅行アドバイザーです。"
         "以下の「理想の休日プラン」に合う宿泊施設・食事施設・レジャー施設を、福利厚生サービスの施設検索（キーワード検索）で見つけるための検索キーワードを提案してください。\n"
@@ -63,8 +98,14 @@ def run_gpt(content_text_to_gpt, search_focus_to_gpt):
         "- 各キーワードを「エリア」「施設タイプ」「設備・サービス」「アクティビティ」のいずれかに分類すること\n"
         "- プランに地域の指定がない場合は、出発地・日数・目的から現実的に行けるエリアを推測して提案すること\n"
         "- キーワードの観点は「" + search_focus_to_gpt + "」の方針で配分すること\n"
+        "- プランから宿泊日（利用日）・人数・予算を読み取り、conditionsに入れること。"
+        "プランに書かれていない項目や、「夏休み」「週末」「安めで」のように1つの値に決められないあいまいな書き方の項目はnullとし、推測で埋めないこと\n"
+        "- 宿泊日は「12月26日」のように月日が書かれている場合だけ、今日（" + f"{today:%Y-%m-%d}" + "）以降の日付としてYYYY-MM-DD形式で入れること。「来週の土曜日」のように曜日だけで書かれている場合はnullとすること\n"
+        "- 人数と予算（円）は整数で入れること。予算は全体の金額とし、1人あたりで書かれている場合は人数を掛けた合計にすること\n"
         "- 出力は次のJSON形式のみとすること: "
-        '{"summary": "施設選びの条件の要約（1文）", "keywords": [{"keyword": "検索キーワード", "category": "分類", "reason": "このキーワードでどんな施設が見つかるか（1文）"}]}\n\n'
+        '{"summary": "施設選びの条件の要約（1文）", '
+        '"conditions": {"stay_date": "YYYY-MM-DD または null", "people": 人数 または null, "budget": 予算の金額 または null}, '
+        '"keywords": [{"keyword": "検索キーワード", "category": "分類", "reason": "このキーワードでどんな施設が見つかるか（1文）"}]}\n\n'
         "理想の休日プラン: " + content_text_to_gpt
     )
 
@@ -74,9 +115,11 @@ def run_gpt(content_text_to_gpt, search_focus_to_gpt):
             {"role": "user", "content": request_to_gpt},
         ],
         response_format={"type": "json_object"},
+        # JSONモードでまれに起きる出力の暴走で、長時間待たされないよう上限を設ける
+        max_tokens=1500,
     )
 
-    # 返って来たレスポンスの内容（JSON文字列）を辞書に変換して返す
+    # 返って来たレスポンスの内容（JSON文字列）を辞書に変換して返す。読めない場合は呼び出し側でエラー表示する
     output_content = response.choices[0].message.content.strip()
     result = json.loads(output_content)
 
@@ -85,6 +128,7 @@ def run_gpt(content_text_to_gpt, search_focus_to_gpt):
         item for item in result.get("keywords", [])
         if not re.search(r"[0-9０-９]", item.get("keyword", ""))
     ]
+    result["conditions"] = normalize_conditions(result.get("conditions"))
     return result
 
 # サイドバー（ユーザー名・クーポン使用履歴・ログアウトはデモ用の見た目のみ）
@@ -127,19 +171,26 @@ with st.container(border=True):
                 st.warning("休日プランを入力してください。")
             else:
                 with st.spinner("福利厚生メニューで使える検索キーワードを考えています..."):
-                    result = run_gpt(content_text_to_gpt, search_focus_to_gpt)
+                    try:
+                        result = run_gpt(content_text_to_gpt, search_focus_to_gpt)
+                    except json.JSONDecodeError:
+                        result = None
 
-                st.divider()
-                st.caption("こう読み取りました。違うときは「条件で探す」から検索してください。")
-                st.write(result.get("summary", ""))
+                if result is None:
+                    st.error("AIの返答をうまく読み取れませんでした。もう一度「キーワードを提案」を押してください。")
+                else:
+                    st.divider()
+                    st.caption("こう読み取りました。違うときは「条件で探す」から検索してください。")
+                    st.write(result.get("summary", ""))
+                    st.markdown(format_conditions(result["conditions"]))
 
-                st.markdown("**使用する検索キーワード**")
-                # st.caption("福利厚生サービスの施設検索欄に入力して使ってください。")
-                for item in result.get("keywords", []):
-                    st.markdown(
-                        f"**{item.get('keyword', '')}**（{item.get('category', '')}）"
-                        f"　:gray[{item.get('reason', '')}]"
-                    )
+                    st.markdown("**使用する検索キーワード**")
+                    # st.caption("福利厚生サービスの施設検索欄に入力して使ってください。")
+                    for item in result.get("keywords", []):
+                        st.markdown(
+                            f"**{item.get('keyword', '')}**（{item.get('category', '')}）"
+                            f"　:gray[{item.get('reason', '')}]"
+                        )
 
     with tab_condition:
         with st.form("condition_form"):

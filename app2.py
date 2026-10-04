@@ -122,7 +122,7 @@ with st.container(border=True):
                     result = run_gpt(content_text_to_gpt, search_focus_to_gpt)
 
                 st.divider()
-                st.caption("こう読み取りました。")
+                st.caption("こう読み取りました。違うときは「条件で探す」から検索してください。")
                 st.write(result.get("summary", ""))
 
                 st.markdown("**おすすめの検索キーワード**")

@@ -81,7 +81,7 @@ def run_gpt(content_text_to_gpt, search_focus_to_gpt):
 
 # サイドバー（ユーザー名・クーポン使用履歴・ログアウトはデモ用の見た目のみ）
 st.sidebar.header(":material/search: 福利厚生キーワード提案")
-st.sidebar.write("木下朗（デモ）")
+st.sidebar.write("木下 亮（法務）")
 page = st.sidebar.radio(
     "メニュー",
     options=["検索", "クーポン使用履歴"],
@@ -155,13 +155,22 @@ with st.container(border=True):
             results = search_facilities(area, category, stay_date, people, budget)
 
             st.divider()
-            col_title, col_sort = st.columns([2, 1], vertical_alignment="bottom")
-            col_title.markdown(f"**検索結果 {len(results)}件**")
-            sort_by = col_sort.selectbox("並び順", options=sort_kind_of, label_visibility="collapsed")
-            st.caption(
-                f"{stay_date:%Y/%m/%d}（{weekday_names[stay_date.weekday()]}）・{people}人の料金です。"
-                "施設データはデモ用の架空のものです。"
+            col_title, col_back = st.columns([3, 1], vertical_alignment="center")
+            col_title.subheader(":material/list: 検索結果", anchor=False)
+            # 保存した検索条件を消して、検索前の状態に戻す
+            col_back.button(
+                "トップに戻る",
+                icon=":material/home:",
+                on_click=lambda: st.session_state.pop("condition_search", None),
+                width="stretch",
             )
+
+            col_count, col_sort = st.columns([2, 1], vertical_alignment="center")
+            col_count.caption(
+                f"{len(results)}件（{stay_date:%Y/%m/%d}（{weekday_names[stay_date.weekday()]}）・{people}人の料金）"
+                "　施設データはデモ用の架空のものです。"
+            )
+            sort_by = col_sort.selectbox("並び順", options=sort_kind_of, label_visibility="collapsed")
 
             if not results:
                 st.info("条件に合う施設が見つかりませんでした。エリアやカテゴリ、予算を変えてお試しください。")

@@ -26,7 +26,8 @@ sort_kind_of = ["お得順", "価格が安い順", "評価が高い順"]
 weekday_names = ["月", "火", "水", "木", "金", "土", "日"]
 category_icons = {"宿泊": ":material/bed:", "食事": ":material/restaurant:", "レジャー": ":material/attractions:"}
 
-# 条件に合う施設を絞り込む。料金は1人あたりなので、予算は人数分の合計で判定する
+# 条件に合う施設を絞り込む。料金は1人あたりなので、予算は人数分（人数が指定なしなら1人分）の合計で判定する
+# 宿泊日・人数・予算が None（指定なし）、予算が 0 の条件では絞り込まない
 def search_facilities(area, category, stay_date, people, budget):
     results = []
     for facility in FACILITIES:
@@ -34,11 +35,11 @@ def search_facilities(area, category, stay_date, people, budget):
             continue
         if category != "すべて" and facility["category"] != category:
             continue
-        if stay_date.weekday() in facility["closed_weekdays"]:
+        if stay_date and stay_date.weekday() in facility["closed_weekdays"]:
             continue
-        if people > facility["capacity"]:
+        if people and people > facility["capacity"]:
             continue
-        if budget > 0 and facility["member_price"] * people > budget:
+        if budget and facility["member_price"] * (people or 1) > budget:
             continue
         results.append(facility)
     return results
@@ -56,16 +57,17 @@ def normalize_conditions(raw):
     raw = raw if isinstance(raw, dict) else {}
     today = datetime.date.today()
 
+    # AIからは月日（MM-DD）だけを受け取り、年はプログラムで決める（今日以降で最も近い日付）
+    # AIが年付き（YYYY-MM-DD）で返した場合も、年は古いことがあるため無視して月日だけを使う
     stay_date = None
-    try:
-        stay_date = datetime.date.fromisoformat(str(raw.get("stay_date")))
-        # AIは年を古い年で返すことがあるため、過去の日付になった場合は月日だけを使い、今日以降で最も近い日付にする
-        if stay_date < today:
-            stay_date = stay_date.replace(year=today.year)
+    match = re.fullmatch(r"(?:\d{4}-)?(\d{1,2})-(\d{1,2})", str(raw.get("stay_date")))
+    if match:
+        try:
+            stay_date = datetime.date(today.year, int(match.group(1)), int(match.group(2)))
             if stay_date < today:
                 stay_date = stay_date.replace(year=today.year + 1)
-    except ValueError:
-        pass
+        except ValueError:
+            stay_date = None
 
     def to_positive_int(value):
         try:
@@ -86,8 +88,6 @@ def format_conditions(conditions):
 
 # chatGPTにリクエストするためのメソッドを設定。引数には理想の休日プランと重視する観点を指定
 def run_gpt(content_text_to_gpt, search_focus_to_gpt):
-    # 「12月26日」のような年のない書き方を日付にするため、今日の日付を伝える
-    today = datetime.date.today()
     request_to_gpt = (
         "あなたは企業の福利厚生サービス（会員制の宿泊・レジャー優待メニュー）に詳しい旅行アドバイザーです。"
         "以下の「理想の休日プラン」に合う宿泊施設・食事施設・レジャー施設を、福利厚生サービスの施設検索（キーワード検索）で見つけるための検索キーワードを提案してください。\n"
@@ -100,11 +100,11 @@ def run_gpt(content_text_to_gpt, search_focus_to_gpt):
         "- キーワードの観点は「" + search_focus_to_gpt + "」の方針で配分すること\n"
         "- プランから宿泊日（利用日）・人数・予算を読み取り、conditionsに入れること。"
         "プランに書かれていない項目や、「夏休み」「週末」「安めで」のように1つの値に決められないあいまいな書き方の項目はnullとし、推測で埋めないこと\n"
-        "- 宿泊日は「12月26日」のように月日が書かれている場合だけ、今日（" + f"{today:%Y-%m-%d}" + "）以降の日付としてYYYY-MM-DD形式で入れること。「来週の土曜日」のように曜日だけで書かれている場合はnullとすること\n"
-        "- 人数と予算（円）は整数で入れること。予算は全体の金額とし、1人あたりで書かれている場合は人数を掛けた合計にすること\n"
+        "- 宿泊日は「12月26日」のように月日が書かれている場合だけ、月日をMM-DD形式（例：03-03）で入れること。年は入れないこと。「来週の土曜日」のように曜日だけで書かれている場合はnullとすること\n"
+        "- 人数と予算（円）は整数で入れること。予算は全体の金額とし、1人あたりで書かれている場合は人数を掛けた合計にすること（泊数は掛けないこと）\n"
         "- 出力は次のJSON形式のみとすること: "
         '{"summary": "施設選びの条件の要約（1文）", '
-        '"conditions": {"stay_date": "YYYY-MM-DD または null", "people": 人数 または null, "budget": 予算の金額 または null}, '
+        '"conditions": {"stay_date": "MM-DD または null", "people": 人数 または null, "budget": 予算の金額 または null}, '
         '"keywords": [{"keyword": "検索キーワード", "category": "分類", "reason": "このキーワードでどんな施設が見つかるか（1文）"}]}\n\n'
         "理想の休日プラン: " + content_text_to_gpt
     )
@@ -130,6 +130,48 @@ def run_gpt(content_text_to_gpt, search_focus_to_gpt):
     ]
     result["conditions"] = normalize_conditions(result.get("conditions"))
     return result
+
+# 検索結果（見出し・トップに戻る・件数・並び替え・施設カード）を表示する。両方のタブで共通
+# state_key は保存した検索結果の名前。peopleが None（指定なし）のときは1人あたりの料金で表示する
+def show_results(results, people, state_key, note=""):
+    st.divider()
+    col_title, col_back = st.columns([3, 1], vertical_alignment="center")
+    col_title.subheader(":material/list: 検索結果", anchor=False)
+    # 保存した検索結果を消して、検索前の状態に戻す
+    col_back.button(
+        "トップに戻る",
+        icon=":material/home:",
+        on_click=lambda: st.session_state.pop(state_key, None),
+        width="stretch",
+        key=f"{state_key}_back",
+    )
+
+    col_count, col_sort = st.columns([2, 1], vertical_alignment="center")
+    price_basis = f"{people}人の料金" if people else "1人あたりの料金"
+    col_count.caption(f"{len(results)}件（{note}{price_basis}）　施設データはデモ用の架空のものです。")
+    sort_by = col_sort.selectbox("並び順", options=sort_kind_of, label_visibility="collapsed", key=f"{state_key}_sort")
+
+    if not results:
+        st.info("条件に合う施設が見つかりませんでした。条件を変えてお試しください。")
+
+    for facility in sort_facilities(results, sort_by):
+        member_total = facility["member_price"] * (people or 1)
+        regular_total = facility["regular_price"] * (people or 1)
+        with st.container(border=True):
+            st.subheader(facility["name"], anchor=False)
+            badges = st.container(horizontal=True)
+            with badges:
+                st.badge(facility["category"], icon=category_icons[facility["category"]], color="violet")
+                st.badge(facility["area"], icon=":material/place:", color="gray")
+                if facility["new"]:
+                    st.badge("新着", color="red")
+                if facility["coupon"]:
+                    st.badge("クーポンあり", icon=":material/confirmation_number:", color="blue")
+                if facility["rating"]:
+                    st.markdown(f"★{facility['rating']:.1f}")
+            st.subheader(f":green[{regular_total - member_total:,}円お得]", anchor=False)
+            st.markdown(f"福利厚生 **{member_total:,}円**　:gray[（一般サイト {regular_total:,}円）]")
+            st.caption(facility["description"])
 
 # サイドバー（ユーザー名・クーポン使用履歴・ログアウトはデモ用の見た目のみ）
 st.sidebar.header(":material/search: 福利厚生キーワード提案")
@@ -172,25 +214,36 @@ with st.container(border=True):
             else:
                 with st.spinner("福利厚生メニューで使える検索キーワードを考えています..."):
                     try:
-                        result = run_gpt(content_text_to_gpt, search_focus_to_gpt)
+                        # 並び替えで画面が再実行されても結果が消えず、AIを呼び直さないよう、結果を保存しておく
+                        st.session_state["text_search"] = run_gpt(content_text_to_gpt, search_focus_to_gpt)
                     except json.JSONDecodeError:
-                        result = None
+                        st.error("AIの返答をうまく読み取れませんでした。もう一度「キーワードを提案」を押してください。")
 
-                if result is None:
-                    st.error("AIの返答をうまく読み取れませんでした。もう一度「キーワードを提案」を押してください。")
-                else:
-                    st.divider()
-                    st.caption("こう読み取りました。違うときは「条件で探す」から検索してください。")
-                    st.write(result.get("summary", ""))
-                    st.markdown(format_conditions(result["conditions"]))
+        if "text_search" in st.session_state:
+            result = st.session_state["text_search"]
+            conditions = result["conditions"]
 
-                    st.markdown("**使用する検索キーワード**")
-                    # st.caption("福利厚生サービスの施設検索欄に入力して使ってください。")
-                    for item in result.get("keywords", []):
-                        st.markdown(
-                            f"**{item.get('keyword', '')}**（{item.get('category', '')}）"
-                            f"　:gray[{item.get('reason', '')}]"
-                        )
+            st.divider()
+            st.caption("こう読み取りました。違うときは「条件で探す」から検索してください。")
+            st.write(result.get("summary", ""))
+            st.markdown(format_conditions(conditions))
+
+            st.markdown("**使用する検索キーワード**")
+            # st.caption("福利厚生サービスの施設検索欄に入力して使ってください。")
+            for item in result.get("keywords", []):
+                st.markdown(
+                    f"**{item.get('keyword', '')}**（{item.get('category', '')}）"
+                    f"　:gray[{item.get('reason', '')}]"
+                )
+
+            # 分類が「エリア」のキーワードに施設データのエリア名が含まれていれば、そのエリアで探す（なければ全エリア）
+            area = next(
+                (name for item in result.get("keywords", []) if item.get("category") == "エリア"
+                 for name in area_kind_of[1:] if name in item.get("keyword", "")),
+                "すべて",
+            )
+            results = search_facilities(area, "すべて", conditions["stay_date"], conditions["people"], conditions["budget"])
+            show_results(results, conditions["people"], "text_search")
 
     with tab_condition:
         with st.form("condition_form"):
@@ -215,42 +268,5 @@ with st.container(border=True):
             area, category, stay_date, people, budget = st.session_state["condition_search"]
             results = search_facilities(area, category, stay_date, people, budget)
 
-            st.divider()
-            col_title, col_back = st.columns([3, 1], vertical_alignment="center")
-            col_title.subheader(":material/list: 検索結果", anchor=False)
-            # 保存した検索条件を消して、検索前の状態に戻す
-            col_back.button(
-                "トップに戻る",
-                icon=":material/home:",
-                on_click=lambda: st.session_state.pop("condition_search", None),
-                width="stretch",
-            )
-
-            col_count, col_sort = st.columns([2, 1], vertical_alignment="center")
-            col_count.caption(
-                f"{len(results)}件（{stay_date:%Y/%m/%d}（{weekday_names[stay_date.weekday()]}）・{people}人の料金）"
-                "　施設データはデモ用の架空のものです。"
-            )
-            sort_by = col_sort.selectbox("並び順", options=sort_kind_of, label_visibility="collapsed")
-
-            if not results:
-                st.info("条件に合う施設が見つかりませんでした。エリアやカテゴリ、予算を変えてお試しください。")
-
-            for facility in sort_facilities(results, sort_by):
-                member_total = facility["member_price"] * people
-                regular_total = facility["regular_price"] * people
-                with st.container(border=True):
-                    st.subheader(facility["name"], anchor=False)
-                    badges = st.container(horizontal=True)
-                    with badges:
-                        st.badge(facility["category"], icon=category_icons[facility["category"]], color="violet")
-                        st.badge(facility["area"], icon=":material/place:", color="gray")
-                        if facility["new"]:
-                            st.badge("新着", color="red")
-                        if facility["coupon"]:
-                            st.badge("クーポンあり", icon=":material/confirmation_number:", color="blue")
-                        if facility["rating"]:
-                            st.markdown(f"★{facility['rating']:.1f}")
-                    st.subheader(f":green[{regular_total - member_total:,}円お得]", anchor=False)
-                    st.markdown(f"福利厚生 **{member_total:,}円**　:gray[（一般サイト {regular_total:,}円）]")
-                    st.caption(facility["description"])
+            note = f"{stay_date:%Y/%m/%d}（{weekday_names[stay_date.weekday()]}）・"
+            show_results(results, people, "condition_search", note)

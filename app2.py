@@ -2,6 +2,8 @@ import streamlit as st
 from openai import OpenAI
 import json
 
+st.set_page_config(page_title="福利厚生キーワード提案", page_icon=":material/search:")
+
 api_key = st.secrets["OPENAI_API_KEY"]
 
 client = OpenAI(api_key=api_key)
@@ -43,29 +45,56 @@ def run_gpt(content_text_to_gpt, search_focus_to_gpt):
     output_content = response.choices[0].message.content.strip()
     return json.loads(output_content)
 
-st.title('福利厚生メニューで旅行施設を探す検索キーワード提案アプリ')
-
-content_text_to_gpt = st.sidebar.text_area(
-    "理想の休日プランを自由に入力してください！",
-    placeholder="例：夏休みに家族4人（子ども小学生2人）で、東京から車で行ける温泉旅館に1泊したい。部屋食か個室の食事で、子どもが遊べる施設があると嬉しい。",
+# サイドバー（ユーザー名・クーポン使用履歴・ログアウトはデモ用の見た目のみ）
+st.sidebar.header(":material/search: 福利厚生キーワード提案")
+st.sidebar.write("ゲスト（デモ）")
+page = st.sidebar.radio(
+    "メニュー",
+    options=["検索", "クーポン使用履歴"],
+    label_visibility="collapsed",
 )
+if st.sidebar.button("ログアウト", icon=":material/logout:"):
+    st.toast("デモ版のためログアウト機能はありません。")
 
-search_focus_to_gpt = st.sidebar.selectbox("重視する観点", options=search_focus_kind_of)
+if page == "クーポン使用履歴":
+    with st.container(border=True):
+        st.subheader(":material/confirmation_number: クーポン使用履歴")
+        st.info("この機能はデモ版では準備中です。")
+    st.stop()
 
-if st.sidebar.button("キーワードを提案してもらう"):
-    if not content_text_to_gpt.strip():
-        st.warning("理想の休日プランを入力してください。")
-    else:
-        with st.spinner("福利厚生メニューで使える検索キーワードを考えています..."):
-            result = run_gpt(content_text_to_gpt, search_focus_to_gpt)
+with st.container(border=True):
+    st.subheader(":material/search: キーワード提案")
 
-        st.subheader("施設選びの条件")
-        st.write(result.get("summary", ""))
+    tab_text, tab_condition = st.tabs([":material/chat: 文章で探す", ":material/tune: 条件で探す"])
 
-        st.subheader("おすすめの検索キーワード")
-        st.caption("福利厚生サービスの施設検索欄に入力して使ってください。")
-        for i, item in enumerate(result.get("keywords", []), start=1):
-            st.markdown(f"**{i}. {item.get('keyword', '')}**（{item.get('category', '')}）")
-            st.caption(item.get("reason", ""))
-else:
-    st.write("左のサイドバーに理想の休日プランを入力して、ボタンを押してください。")
+    with tab_text:
+        st.info("休日プランを文章で入力すると、福利厚生サービスの施設検索で使えるキーワードを提案します。")
+        content_text_to_gpt = st.text_area(
+            "どんな休日にしたいですか",
+            placeholder="例：夏休みに家族4人（子ども小学生2人）で、東京から車で行ける温泉旅館に1泊したい。部屋食か個室の食事で、子どもが遊べる施設があると嬉しい。",
+        )
+
+    with tab_condition:
+        # 選択を外された場合（None）は「バランスよく」として扱う
+        search_focus_to_gpt = st.pills(
+            "重視する観点",
+            options=search_focus_kind_of,
+            default=search_focus_kind_of[0],
+        ) or search_focus_kind_of[0]
+
+    if st.button("キーワードを提案", type="primary", icon=":material/search:"):
+        if not content_text_to_gpt.strip():
+            st.warning("「文章で探す」に休日プランを入力してください。")
+        else:
+            with st.spinner("福利厚生メニューで使える検索キーワードを考えています..."):
+                result = run_gpt(content_text_to_gpt, search_focus_to_gpt)
+
+            st.divider()
+            st.caption("こう読み取りました。観点を変えるときは「条件で探す」から直せます。")
+            st.write(result.get("summary", ""))
+
+            st.markdown("**おすすめの検索キーワード**")
+            st.caption("福利厚生サービスの施設検索欄に入力して使ってください。")
+            for i, item in enumerate(result.get("keywords", []), start=1):
+                st.markdown(f"**{i}. {item.get('keyword', '')}**（{item.get('category', '')}）")
+                st.caption(item.get("reason", ""))

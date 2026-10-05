@@ -3,7 +3,8 @@ from openai import OpenAI
 import json
 import re
 import datetime
-from facilities import FACILITIES
+# 【一時停止中】施設の検索・表示は、別ファイルで作成予定の施設の出力モジュールに置き換えるため、デモ用の処理をコメントアウトしている
+# from facilities import FACILITIES
 
 st.set_page_config(page_title="福利厚生キーワード提案", page_icon=":material/search:")
 
@@ -22,35 +23,37 @@ search_focus_kind_of = [
 # 「条件で探す」タブの選択肢（https://bts-demo.streamlit.app/ の項目に合わせる）
 area_kind_of = ["すべて", "箱根", "熱海", "軽井沢", "京都", "沖縄"]
 category_kind_of = ["すべて", "宿泊", "食事", "レジャー"]
-sort_kind_of = ["お得順", "価格が安い順", "評価が高い順"]
 weekday_names = ["月", "火", "水", "木", "金", "土", "日"]
-category_icons = {"宿泊": ":material/bed:", "食事": ":material/restaurant:", "レジャー": ":material/attractions:"}
+# 【一時停止中】施設の検索・表示は、別ファイルで作成予定の施設の出力モジュールに置き換えるため、デモ用の処理をコメントアウトしている（並び順の選択肢と、施設カードのカテゴリアイコン）
+# sort_kind_of = ["お得順", "価格が安い順", "評価が高い順"]
+# category_icons = {"宿泊": ":material/bed:", "食事": ":material/restaurant:", "レジャー": ":material/attractions:"}
 
+# 【一時停止中】施設の検索・表示は、別ファイルで作成予定の施設の出力モジュールに置き換えるため、デモ用の処理をコメントアウトしている（search_facilities と sort_facilities）
 # 条件に合う施設を絞り込む。料金は1人あたりなので、予算は人数分（人数が指定なしなら1人分）の合計で判定する
 # 宿泊日・人数・予算が None（指定なし）、予算が 0 の条件では絞り込まない
-def search_facilities(area, category, stay_date, people, budget):
-    results = []
-    for facility in FACILITIES:
-        if area != "すべて" and facility["area"] != area:
-            continue
-        if category != "すべて" and facility["category"] != category:
-            continue
-        if stay_date and stay_date.weekday() in facility["closed_weekdays"]:
-            continue
-        if people and people > facility["capacity"]:
-            continue
-        if budget and facility["member_price"] * (people or 1) > budget:
-            continue
-        results.append(facility)
-    return results
+# def search_facilities(area, category, stay_date, people, budget):
+#     results = []
+#     for facility in FACILITIES:
+#         if area != "すべて" and facility["area"] != area:
+#             continue
+#         if category != "すべて" and facility["category"] != category:
+#             continue
+#         if stay_date and stay_date.weekday() in facility["closed_weekdays"]:
+#             continue
+#         if people and people > facility["capacity"]:
+#             continue
+#         if budget and facility["member_price"] * (people or 1) > budget:
+#             continue
+#         results.append(facility)
+#     return results
 
-# 並び順に合わせて施設を並べ替える（評価なしは最後）
-def sort_facilities(facilities, sort_by):
-    if sort_by == "価格が安い順":
-        return sorted(facilities, key=lambda f: f["member_price"])
-    if sort_by == "評価が高い順":
-        return sorted(facilities, key=lambda f: f["rating"] or 0, reverse=True)
-    return sorted(facilities, key=lambda f: f["regular_price"] - f["member_price"], reverse=True)
+# # 並び順に合わせて施設を並べ替える（評価なしは最後）
+# def sort_facilities(facilities, sort_by):
+#     if sort_by == "価格が安い順":
+#         return sorted(facilities, key=lambda f: f["member_price"])
+#     if sort_by == "評価が高い順":
+#         return sorted(facilities, key=lambda f: f["rating"] or 0, reverse=True)
+#     return sorted(facilities, key=lambda f: f["regular_price"] - f["member_price"], reverse=True)
 
 # AIが読み取った宿泊日・人数・予算を整える。読めない値は「指定なし」（None）にする
 def normalize_conditions(raw):
@@ -131,47 +134,48 @@ def run_gpt(content_text_to_gpt, search_focus_to_gpt):
     result["conditions"] = normalize_conditions(result.get("conditions"))
     return result
 
-# 検索結果（見出し・トップに戻る・件数・並び替え・施設カード）を表示する。両方のタブで共通
-# state_key は保存した検索結果の名前。peopleが None（指定なし）のときは1人あたりの料金で表示する
-def show_results(results, people, state_key, note=""):
-    st.divider()
-    col_title, col_back = st.columns([3, 1], vertical_alignment="center")
-    col_title.subheader(":material/list: 検索結果", anchor=False)
-    # 保存した検索結果を消して、検索前の状態に戻す
-    col_back.button(
-        "トップに戻る",
-        icon=":material/home:",
-        on_click=lambda: st.session_state.pop(state_key, None),
-        width="stretch",
-        key=f"{state_key}_back",
-    )
+# 【一時停止中】施設の検索・表示は、別ファイルで作成予定の施設の出力モジュールに置き換えるため、デモ用の処理をコメントアウトしている（show_results）
+# # 検索結果（見出し・トップに戻る・件数・並び替え・施設カード）を表示する。両方のタブで共通
+# # state_key は保存した検索結果の名前。peopleが None（指定なし）のときは1人あたりの料金で表示する
+# def show_results(results, people, state_key, note=""):
+    # st.divider()
+    # col_title, col_back = st.columns([3, 1], vertical_alignment="center")
+    # col_title.subheader(":material/list: 検索結果", anchor=False)
+    # # 保存した検索結果を消して、検索前の状態に戻す
+    # col_back.button(
+        # "トップに戻る",
+        # icon=":material/home:",
+        # on_click=lambda: st.session_state.pop(state_key, None),
+        # width="stretch",
+        # key=f"{state_key}_back",
+    # )
 
-    col_count, col_sort = st.columns([2, 1], vertical_alignment="center")
-    price_basis = f"{people}人の料金" if people else "1人あたりの料金"
-    col_count.caption(f"{len(results)}件（{note}{price_basis}）　施設データはデモ用の架空のものです。")
-    sort_by = col_sort.selectbox("並び順", options=sort_kind_of, label_visibility="collapsed", key=f"{state_key}_sort")
+    # col_count, col_sort = st.columns([2, 1], vertical_alignment="center")
+    # price_basis = f"{people}人の料金" if people else "1人あたりの料金"
+    # col_count.caption(f"{len(results)}件（{note}{price_basis}）　施設データはデモ用の架空のものです。")
+    # sort_by = col_sort.selectbox("並び順", options=sort_kind_of, label_visibility="collapsed", key=f"{state_key}_sort")
 
-    if not results:
-        st.info("条件に合う施設が見つかりませんでした。条件を変えてお試しください。")
+    # if not results:
+        # st.info("条件に合う施設が見つかりませんでした。条件を変えてお試しください。")
 
-    for facility in sort_facilities(results, sort_by):
-        member_total = facility["member_price"] * (people or 1)
-        regular_total = facility["regular_price"] * (people or 1)
-        with st.container(border=True):
-            st.subheader(facility["name"], anchor=False)
-            badges = st.container(horizontal=True)
-            with badges:
-                st.badge(facility["category"], icon=category_icons[facility["category"]], color="violet")
-                st.badge(facility["area"], icon=":material/place:", color="gray")
-                if facility["new"]:
-                    st.badge("新着", color="red")
-                if facility["coupon"]:
-                    st.badge("クーポンあり", icon=":material/confirmation_number:", color="blue")
-                if facility["rating"]:
-                    st.markdown(f"★{facility['rating']:.1f}")
-            st.subheader(f":green[{regular_total - member_total:,}円お得]", anchor=False)
-            st.markdown(f"福利厚生 **{member_total:,}円**　:gray[（一般サイト {regular_total:,}円）]")
-            st.caption(facility["description"])
+    # for facility in sort_facilities(results, sort_by):
+        # member_total = facility["member_price"] * (people or 1)
+        # regular_total = facility["regular_price"] * (people or 1)
+        # with st.container(border=True):
+            # st.subheader(facility["name"], anchor=False)
+            # badges = st.container(horizontal=True)
+            # with badges:
+                # st.badge(facility["category"], icon=category_icons[facility["category"]], color="violet")
+                # st.badge(facility["area"], icon=":material/place:", color="gray")
+                # if facility["new"]:
+                    # st.badge("新着", color="red")
+                # if facility["coupon"]:
+                    # st.badge("クーポンあり", icon=":material/confirmation_number:", color="blue")
+                # if facility["rating"]:
+                    # st.markdown(f"★{facility['rating']:.1f}")
+            # st.subheader(f":green[{regular_total - member_total:,}円お得]", anchor=False)
+            # st.markdown(f"福利厚生 **{member_total:,}円**　:gray[（一般サイト {regular_total:,}円）]")
+            # st.caption(facility["description"])
 
 # サイドバー（ユーザー名・クーポン使用履歴・ログアウトはデモ用の見た目のみ）
 st.sidebar.header(":material/search: 福利厚生キーワード提案")
@@ -236,14 +240,15 @@ with st.container(border=True):
                     f"　:gray[{item.get('reason', '')}]"
                 )
 
-            # 分類が「エリア」のキーワードに施設データのエリア名が含まれていれば、そのエリアで探す（なければ全エリア）
-            area = next(
-                (name for item in result.get("keywords", []) if item.get("category") == "エリア"
-                 for name in area_kind_of[1:] if name in item.get("keyword", "")),
-                "すべて",
-            )
-            results = search_facilities(area, "すべて", conditions["stay_date"], conditions["people"], conditions["budget"])
-            show_results(results, conditions["people"], "text_search")
+            # 【一時停止中】施設の検索・表示は、別ファイルで作成予定の施設の出力モジュールに置き換えるため、デモ用の処理をコメントアウトしている
+            # # 分類が「エリア」のキーワードに施設データのエリア名が含まれていれば、そのエリアで探す（なければ全エリア）
+            # area = next(
+                # (name for item in result.get("keywords", []) if item.get("category") == "エリア"
+                 # for name in area_kind_of[1:] if name in item.get("keyword", "")),
+                # "すべて",
+            # )
+            # results = search_facilities(area, "すべて", conditions["stay_date"], conditions["people"], conditions["budget"])
+            # show_results(results, conditions["people"], "text_search")
 
     with tab_condition:
         with st.form("condition_form"):
@@ -261,12 +266,15 @@ with st.container(border=True):
             budget = col_budget.number_input("予算（円・0なら上限なし）", min_value=0, value=0, step=1000)
 
             if st.form_submit_button("検索", type="primary", icon=":material/search:"):
-                # 並び替えで画面が再実行されても結果が消えないよう、検索条件を保存しておく
-                st.session_state["condition_search"] = (area, category, stay_date, people, budget)
+                # 【一時停止中】施設の検索・表示は、別ファイルで作成予定の施設の出力モジュールに置き換えるため、デモ用の処理をコメントアウトしている。それまでは準備中の案内を表示する
+                st.info("施設の検索は準備中です。")
+                # # 並び替えで画面が再実行されても結果が消えないよう、検索条件を保存しておく
+                # st.session_state["condition_search"] = (area, category, stay_date, people, budget)
 
-        if "condition_search" in st.session_state:
-            area, category, stay_date, people, budget = st.session_state["condition_search"]
-            results = search_facilities(area, category, stay_date, people, budget)
+        # 【一時停止中】施設の検索・表示は、別ファイルで作成予定の施設の出力モジュールに置き換えるため、デモ用の処理をコメントアウトしている
+        # if "condition_search" in st.session_state:
+            # area, category, stay_date, people, budget = st.session_state["condition_search"]
+            # results = search_facilities(area, category, stay_date, people, budget)
 
-            note = f"{stay_date:%Y/%m/%d}（{weekday_names[stay_date.weekday()]}）・"
-            show_results(results, people, "condition_search", note)
+            # note = f"{stay_date:%Y/%m/%d}（{weekday_names[stay_date.weekday()]}）・"
+            # show_results(results, people, "condition_search", note)
